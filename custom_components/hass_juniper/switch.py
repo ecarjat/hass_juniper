@@ -24,6 +24,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_NAME): cv.string,
     vol.Required(CONF_HOST): cv.string,
     vol.Required(CONF_PORT): cv.string,
+    vol.Required(CONF_SSH_KEY): cv.string,
 })
 
 def setup_platform(
@@ -38,19 +39,21 @@ def setup_platform(
     name = config[CONF_NAME]
     host = config[CONF_HOST]
     port = config[CONF_PORT]
+    ssh_key = config[CONF_SSH_KEY]
 
     # Add devices
-    add_entities([JuniperPort(name, host, port)])
+    add_entities([JuniperPort(name, host, port, ssh_key)])
 
 
 class JuniperPort(SwitchEntity):
     
-    def __init__(self, name,  host, port):
+    def __init__(self, name,  host, port, ssh_key):
         self._is_on = False
         self._name = name
         self._host = host
         self._port = port
-        self.dev = Device(host=self._host,ssh_private_key_file='/config/ssh_id', user='emmanuel').open()
+        self._ssh_key = ssh_key
+        self.dev = Device(host=self._host,ssh_private_key_file=ssh_key, user='emmanuel').open()
         
     @property
     def is_on(self):
