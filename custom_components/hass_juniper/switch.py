@@ -12,7 +12,7 @@ from jnpr.junos.utils.config import Config
 import homeassistant.helpers.config_validation as cv
 from homeassistant.components.switch import (PLATFORM_SCHEMA,SwitchEntity)
 
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_NAME, CONF_SSH_KEY
+from homeassistant.const import CONF_HOST, CONF_PORT, CONF_NAME, CONF_FILE_PATH
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
@@ -24,7 +24,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_NAME): cv.string,
     vol.Required(CONF_HOST): cv.string,
     vol.Required(CONF_PORT): cv.string,
-    vol.Required(CONF_SSH_KEY): cv.string,
+    vol.Required(CONF_FILE_PATH): cv.string,
 })
 
 def setup_platform(
@@ -39,7 +39,7 @@ def setup_platform(
     name = config[CONF_NAME]
     host = config[CONF_HOST]
     port = config[CONF_PORT]
-    ssh_key = config[CONF_SSH_KEY]
+    ssh_key = config[CONF_FILE_PATH]
 
     # Add devices
     add_entities([JuniperPort(name, host, port, ssh_key)])
