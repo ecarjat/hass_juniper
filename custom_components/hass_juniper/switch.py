@@ -12,7 +12,7 @@ from jnpr.junos.utils.config import Config
 import homeassistant.helpers.config_validation as cv
 from homeassistant.components.switch import (PLATFORM_SCHEMA,SwitchEntity)
 
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_NAME
+from homeassistant.const import CONF_HOST, CONF_PORT, CONF_NAME, CONF_SSH_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
