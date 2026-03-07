@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import socket
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
@@ -52,14 +53,35 @@ class JunosPortClient:
 
         from jnpr.junos import Device as JunosDevice
 
+        # Docker DNS setups may return NXDOMAIN for AAAA and break AF_UNSPEC
+        # lookups used by ncclient. Resolve IPv4 first to avoid false negatives.
+        transport_host = self._resolve_transport_host()
+
         device = JunosDevice(
-            host=self.host,
+            host=transport_host,
             user=self.username,
             ssh_private_key_file=self.ssh_key_path,
             gather_facts=False,
         )
         device.open()
         self._device = device
+
+    def _resolve_transport_host(self) -> str:
+        """Resolve host for transport, preferring IPv4 when available."""
+        try:
+            ipv4_results = socket.getaddrinfo(
+                self.host,
+                None,
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+            )
+        except socket.gaierror:
+            return self.host
+
+        if not ipv4_results:
+            return self.host
+
+        return ipv4_results[0][4][0]
 
     def _disconnect_sync(self) -> None:
         if self._device is None:
