@@ -1,14 +1,13 @@
 {
-  "domain": "juniper",
+  "domain": "hass_juniper",
   "name": "Juniper Ports",
   "codeowners": ["@ecarjat"],
-  "domains": [
-    "switch"
-  ],
+  "config_flow": true,
   "dependencies": [],
-  "documentation": "",
+  "documentation": "https://github.com/ecarjat/hass_juniper",
   "integration_type": "device",
   "iot_class": "local_polling",
-  "requirements": ["junos-eznc"],
-  "version": "0.0.9"
+  "loggers": ["jnpr.junos"],
+  "requirements": ["junos-eznc==2.7.3"],
+  "version": "0.1.0"
 }

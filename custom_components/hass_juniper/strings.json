@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Juniper interface",
+        "description": "Create a switch entity to control one Juniper interface.",
+        "data": {
+          "name": "Name",
+          "host": "Host",
+          "username": "Username",
+          "interface": "Interface",
+          "ssh_key_path": "SSH private key path"
+        }
+      }
+    },
+    "error": {
+      "invalid_config": "The configuration is incomplete or invalid."
+    },
+    "abort": {
+      "already_configured": "This host/interface is already configured.",
+      "invalid_import_config": "The imported YAML entry is invalid."
+    }
+  }
+}
