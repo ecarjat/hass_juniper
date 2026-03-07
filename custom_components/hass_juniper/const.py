@@ -7,11 +7,13 @@ from datetime import timedelta
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_USERNAME
 
 DOMAIN = "hass_juniper"
-PLATFORMS: list[str] = ["switch"]
+PLATFORMS: list[str] = ["switch", "binary_sensor", "sensor"]
 
 CONF_INTERFACE = "interface"
 CONF_SSH_KEY_PATH = "ssh_key_path"
 CONF_UPLOADED_KEY_FILE = "uploaded_key_file"
+DATA_CLIENT = "client"
+DATA_COORDINATOR = "coordinator"
 
 LEGACY_CONF_PORT = "port"
 LEGACY_CONF_FILE_PATH = "file_path"

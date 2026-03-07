@@ -126,7 +126,7 @@ async def test_turn_on_failure_propagates_and_refreshes() -> None:
 
 
 def test_state_reflects_coordinator_data() -> None:
-    """Switch state should map to coordinator disabled state."""
+    """Switch state should map to coordinator admin state."""
     client = MagicMock()
 
     entity = JuniperPortSwitch(
@@ -159,6 +159,34 @@ def test_state_reflects_coordinator_data() -> None:
         speed="1Gbps",
     )
     assert entity.is_on is True
+
+
+def test_state_falls_back_to_disabled_when_admin_missing() -> None:
+    """If admin status is unavailable, disabled flag is used as a fallback."""
+    client = MagicMock()
+
+    entity = JuniperPortSwitch(
+        SimpleNamespace(
+            unique_id="10.0.0.20",
+            data={
+                CONF_NAME: "Switch",
+                CONF_HOST: "10.0.0.20",
+            },
+        ),
+        client,
+        FakeCoordinator(
+            data={
+                "ge-0/0/3": JunosInterfaceState(
+                    disabled=True,
+                    admin_status=None,
+                    oper_status="down",
+                )
+            }
+        ),
+        "ge-0/0/3",
+    )
+
+    assert entity.is_on is False
 
 
 def test_name_and_attributes_include_interface_metadata() -> None:

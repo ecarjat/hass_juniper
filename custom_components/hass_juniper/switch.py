@@ -14,37 +14,14 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-    UpdateFailed,
-)
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import DATA_CLIENT, DATA_COORDINATOR, DOMAIN
+from .coordinator import JuniperPortsCoordinator
 from .junos_client import JunosInterfaceState, JunosPortClient
 from .migration import entity_unique_id, entry_unique_id, normalize_connection_config
 
 _LOGGER = logging.getLogger(__name__)
-
-
-class JuniperPortsCoordinator(DataUpdateCoordinator[dict[str, JunosInterfaceState]]):
-    """Coordinator that refreshes disabled state for all interfaces."""
-
-    def __init__(self, hass: HomeAssistant, client: JunosPortClient) -> None:
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=f"{DOMAIN}_{client.host}_ports",
-            update_interval=DEFAULT_SCAN_INTERVAL,
-        )
-        self._client = client
-
-    async def _async_update_data(self) -> dict[str, JunosInterfaceState]:
-        """Read current interface metadata from the switch."""
-        try:
-            return await self._client.read_interface_states(self.hass)
-        except Exception as err:  # pylint: disable=broad-except
-            raise UpdateFailed(f"Failed to refresh Juniper interface state: {err}") from err
 
 
 class JuniperPortSwitch(CoordinatorEntity[JuniperPortsCoordinator], SwitchEntity):
@@ -75,10 +52,12 @@ class JuniperPortSwitch(CoordinatorEntity[JuniperPortsCoordinator], SwitchEntity
 
     @property
     def is_on(self) -> bool:
-        """Return true when the interface is enabled (not disabled)."""
+        """Return true when the interface admin state is up."""
         state = self.coordinator.data.get(self._interface)
         if state is None:
             return False
+        if state.admin_status is not None:
+            return not state.admin_status.startswith("down")
         return not state.disabled
 
     @property
@@ -144,10 +123,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up hass_juniper switch entities from a config entry."""
-    client: JunosPortClient = hass.data[DOMAIN][entry.entry_id]
-
-    coordinator = JuniperPortsCoordinator(hass, client)
-    await coordinator.async_config_entry_first_refresh()
+    runtime_data: dict[str, Any] = hass.data[DOMAIN][entry.entry_id]
+    client: JunosPortClient = runtime_data[DATA_CLIENT]
+    coordinator: JuniperPortsCoordinator = runtime_data[DATA_COORDINATOR]
 
     known_interfaces: set[str] = set()
 

@@ -13,7 +13,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_SSH_KEY_PATH, DOMAIN, PLATFORMS
+from .const import (
+    CONF_SSH_KEY_PATH,
+    DATA_CLIENT,
+    DATA_COORDINATOR,
+    DOMAIN,
+    PLATFORMS,
+)
+from .coordinator import JuniperPortsCoordinator
 from .junos_client import JunosPortClient
 from .migration import entry_unique_id, normalize_connection_config
 
@@ -82,12 +89,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         username=normalized_data[CONF_USERNAME],
         ssh_key_path=normalized_data[CONF_SSH_KEY_PATH],
     )
+    coordinator = JuniperPortsCoordinator(hass, client)
 
     connected = False
     try:
         await client.connect(hass)
         connected = True
-        interfaces = await client.list_interfaces(hass)
+        await coordinator.async_config_entry_first_refresh()
     except Exception as err:  # pylint: disable=broad-except
         if connected:
             await client.disconnect(hass)
@@ -95,10 +103,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"Could not connect to {normalized_data[CONF_HOST]}"
         ) from err
 
-    if not interfaces:
+    if not coordinator.data:
         _LOGGER.warning("No interfaces discovered on %s", normalized_data[CONF_HOST])
 
-    hass.data[DOMAIN][entry.entry_id] = client
+    hass.data[DOMAIN][entry.entry_id] = {
+        DATA_CLIENT: client,
+        DATA_COORDINATOR: coordinator,
+    }
 
     new_unique_id = entry_unique_id(normalized_data[CONF_HOST])
     if dict(entry.data) != normalized_data or entry.unique_id != new_unique_id:
@@ -124,7 +135,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not unload_ok:
         return False
 
-    client: JunosPortClient | None = hass.data[DOMAIN].pop(entry.entry_id, None)
+    runtime = hass.data[DOMAIN].pop(entry.entry_id, None)
+    client: JunosPortClient | None = None
+    if isinstance(runtime, dict):
+        client = runtime.get(DATA_CLIENT)
+    else:
+        client = runtime
+
     if client is not None:
         await client.disconnect(hass)
 

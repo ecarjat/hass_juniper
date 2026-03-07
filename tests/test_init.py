@@ -12,7 +12,7 @@ from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PLATFORM, CONF_USERNA
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from custom_components.hass_juniper import async_setup, async_setup_entry, async_unload_entry
-from custom_components.hass_juniper.const import CONF_SSH_KEY_PATH, DOMAIN
+from custom_components.hass_juniper.const import CONF_SSH_KEY_PATH, DATA_CLIENT, DOMAIN
 
 
 class FakeHass:
@@ -103,7 +103,7 @@ async def test_async_unload_entry_disconnects_client() -> None:
     entry = FakeEntry({}, entry_id="entry_2")
 
     client = AsyncMock()
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = client
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {DATA_CLIENT: client}
 
     assert await async_unload_entry(hass, entry)
 
