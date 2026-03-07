@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from dataclasses import replace
 import logging
 from collections.abc import Mapping
 from typing import Any
@@ -39,6 +41,8 @@ class JuniperPortSwitch(CoordinatorEntity[JuniperPortsCoordinator], SwitchEntity
         super().__init__(coordinator)
         self._client = client
         self._interface = interface
+        self._command_lock = asyncio.Lock()
+        self._pending = False
         host = entry.data[CONF_HOST]
         self._attr_name = interface
         self._attr_unique_id = entity_unique_id(host, interface)
@@ -74,9 +78,12 @@ class JuniperPortSwitch(CoordinatorEntity[JuniperPortsCoordinator], SwitchEntity
         return super().available and self._interface in self.coordinator.data
 
     @property
-    def extra_state_attributes(self) -> dict[str, str]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Expose per-port operational metadata."""
-        attributes: dict[str, str] = {"interface": self._interface}
+        attributes: dict[str, Any] = {
+            "interface": self._interface,
+            "pending": self._pending,
+        }
         state = self.coordinator.data.get(self._interface)
         if state is None:
             return attributes
@@ -92,29 +99,81 @@ class JuniperPortSwitch(CoordinatorEntity[JuniperPortsCoordinator], SwitchEntity
 
         return attributes
 
+    def _set_pending(self, pending: bool) -> None:
+        """Update in-flight state and notify Home Assistant."""
+        if self._pending == pending:
+            return
+
+        self._pending = pending
+        if self.hass is not None:
+            self.async_write_ha_state()
+
+    def _apply_optimistic_admin_state(self, admin_up: bool) -> dict[str, JunosInterfaceState]:
+        """Optimistically update coordinator data so UI stays in requested state."""
+        previous_data = dict(self.coordinator.data or {})
+        current_state = previous_data.get(self._interface)
+        if current_state is None:
+            current_state = JunosInterfaceState(disabled=not admin_up)
+
+        optimistic_state = replace(
+            current_state,
+            disabled=not admin_up,
+            admin_status="up" if admin_up else "down",
+        )
+
+        optimistic_data = dict(previous_data)
+        optimistic_data[self._interface] = optimistic_state
+        self.coordinator.async_set_updated_data(optimistic_data)
+        return previous_data
+
+    async def _async_set_admin_state(self, admin_up: bool) -> None:
+        """Set interface admin state with optimistic UI update and rollback on failure."""
+        if self._command_lock.locked():
+            _LOGGER.debug(
+                "Ignoring duplicate admin state change while operation is in progress for %s",
+                self._interface,
+            )
+            return
+
+        async with self._command_lock:
+            previous_data = self._apply_optimistic_admin_state(admin_up)
+            self._set_pending(True)
+            try:
+                try:
+                    await self._client.set_disabled(self.hass, self._interface, not admin_up)
+                except Exception as err:  # pylint: disable=broad-except
+                    self.coordinator.async_set_updated_data(previous_data)
+                    try:
+                        await self.coordinator.async_request_refresh()
+                    except Exception as refresh_err:  # pylint: disable=broad-except
+                        _LOGGER.warning(
+                            "Failed to refresh interface %s after command failure: %s",
+                            self._interface,
+                            refresh_err,
+                        )
+                    action = "enable" if admin_up else "disable"
+                    raise HomeAssistantError(
+                        f"Failed to {action} interface {self._interface}"
+                    ) from err
+
+                try:
+                    await self.coordinator.async_request_refresh()
+                except Exception as refresh_err:  # pylint: disable=broad-except
+                    _LOGGER.warning(
+                        "Failed to refresh interface %s after command success: %s",
+                        self._interface,
+                        refresh_err,
+                    )
+            finally:
+                self._set_pending(False)
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable the interface by removing the disable statement."""
-        try:
-            await self._client.set_disabled(self.hass, self._interface, False)
-        except Exception as err:  # pylint: disable=broad-except
-            await self.coordinator.async_request_refresh()
-            raise HomeAssistantError(
-                f"Failed to enable interface {self._interface}"
-            ) from err
-
-        await self.coordinator.async_request_refresh()
+        await self._async_set_admin_state(admin_up=True)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable the interface."""
-        try:
-            await self._client.set_disabled(self.hass, self._interface, True)
-        except Exception as err:  # pylint: disable=broad-except
-            await self.coordinator.async_request_refresh()
-            raise HomeAssistantError(
-                f"Failed to disable interface {self._interface}"
-            ) from err
-
-        await self.coordinator.async_request_refresh()
+        await self._async_set_admin_state(admin_up=False)
 
 
 async def async_setup_entry(
