@@ -21,13 +21,13 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
-from .junos_client import JunosPortClient
+from .junos_client import JunosInterfaceState, JunosPortClient
 from .migration import entity_unique_id, entry_unique_id, normalize_connection_config
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class JuniperPortsCoordinator(DataUpdateCoordinator[dict[str, bool]]):
+class JuniperPortsCoordinator(DataUpdateCoordinator[dict[str, JunosInterfaceState]]):
     """Coordinator that refreshes disabled state for all interfaces."""
 
     def __init__(self, hass: HomeAssistant, client: JunosPortClient) -> None:
@@ -39,10 +39,10 @@ class JuniperPortsCoordinator(DataUpdateCoordinator[dict[str, bool]]):
         )
         self._client = client
 
-    async def _async_update_data(self) -> dict[str, bool]:
-        """Read current disabled status from the switch."""
+    async def _async_update_data(self) -> dict[str, JunosInterfaceState]:
+        """Read current interface metadata from the switch."""
         try:
-            return await self._client.read_disabled_states(self.hass)
+            return await self._client.read_interface_states(self.hass)
         except Exception as err:  # pylint: disable=broad-except
             raise UpdateFailed(f"Failed to refresh Juniper interface state: {err}") from err
 
@@ -76,15 +76,42 @@ class JuniperPortSwitch(CoordinatorEntity[JuniperPortsCoordinator], SwitchEntity
     @property
     def is_on(self) -> bool:
         """Return true when the interface is enabled (not disabled)."""
-        disabled = self.coordinator.data.get(self._interface)
-        if disabled is None:
+        state = self.coordinator.data.get(self._interface)
+        if state is None:
             return False
-        return not disabled
+        return not state.disabled
+
+    @property
+    def name(self) -> str | None:
+        """Return entity name including interface description when available."""
+        state = self.coordinator.data.get(self._interface)
+        if state is None or not state.description:
+            return self._interface
+        return f"{self._interface} - {state.description}"
 
     @property
     def available(self) -> bool:
         """Return if the entity can currently be reached."""
         return super().available and self._interface in self.coordinator.data
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        """Expose per-port operational metadata."""
+        attributes: dict[str, str] = {"interface": self._interface}
+        state = self.coordinator.data.get(self._interface)
+        if state is None:
+            return attributes
+
+        if state.description:
+            attributes["description"] = state.description
+        if state.admin_status:
+            attributes["admin_status"] = state.admin_status
+        if state.oper_status:
+            attributes["oper_status"] = state.oper_status
+        if state.speed:
+            attributes["speed"] = state.speed
+
+        return attributes
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable the interface by removing the disable statement."""
