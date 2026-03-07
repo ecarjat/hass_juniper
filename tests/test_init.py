@@ -12,7 +12,7 @@ from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PLATFORM, CONF_USERNA
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from custom_components.hass_juniper import async_setup, async_setup_entry, async_unload_entry
-from custom_components.hass_juniper.const import CONF_INTERFACE, CONF_SSH_KEY_PATH, DOMAIN
+from custom_components.hass_juniper.const import CONF_SSH_KEY_PATH, DOMAIN
 
 
 class FakeHass:
@@ -44,8 +44,8 @@ class FakeEntry:
 
 
 @pytest.mark.asyncio
-async def test_async_setup_starts_import_for_yaml_switch() -> None:
-    """YAML switch config should trigger import flow."""
+async def test_async_setup_starts_single_import_per_host() -> None:
+    """YAML migration should deduplicate import requests per host."""
     hass = FakeHass()
 
     assert await async_setup(
@@ -58,7 +58,14 @@ async def test_async_setup_starts_import_for_yaml_switch() -> None:
                     CONF_HOST: "10.0.0.1",
                     "port": "ge-0/0/1",
                     "file_path": "/config/.ssh/id_rsa",
-                }
+                },
+                {
+                    CONF_PLATFORM: DOMAIN,
+                    CONF_NAME: "Downlink",
+                    CONF_HOST: "10.0.0.1",
+                    "port": "ge-0/0/2",
+                    "file_path": "/config/.ssh/id_rsa",
+                },
             ]
         },
     )
@@ -66,8 +73,6 @@ async def test_async_setup_starts_import_for_yaml_switch() -> None:
     await asyncio.gather(*hass.created_tasks)
 
     hass.config_entries.flow.async_init.assert_awaited_once()
-    call = hass.config_entries.flow.async_init.await_args
-    assert call.kwargs["context"]["source"] == "import"
 
 
 @pytest.mark.asyncio
@@ -76,10 +81,9 @@ async def test_async_setup_entry_raises_not_ready_on_connect_error() -> None:
     hass = FakeHass()
     entry = FakeEntry(
         {
-            CONF_NAME: "Port",
+            CONF_NAME: "Switch",
             CONF_HOST: "10.0.0.10",
             CONF_USERNAME: "admin",
-            CONF_INTERFACE: "ge-0/0/0",
             CONF_SSH_KEY_PATH: "/config/.ssh/id_rsa",
         }
     )

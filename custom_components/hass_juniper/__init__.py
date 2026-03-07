@@ -13,9 +13,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_INTERFACE, CONF_SSH_KEY_PATH, DOMAIN, PLATFORMS
+from .const import CONF_SSH_KEY_PATH, DOMAIN, PLATFORMS
 from .junos_client import JunosPortClient
-from .migration import entry_unique_id, normalize_legacy_config
+from .migration import entry_unique_id, normalize_connection_config
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,20 +35,26 @@ def _iter_legacy_switch_configs(config: ConfigType) -> list[Mapping[str, Any]]:
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the hass_juniper integration from YAML for migration only."""
+    """Set up hass_juniper from YAML for migration only."""
     hass.data.setdefault(DOMAIN, {})
 
+    seen_hosts: set[str] = set()
     for raw_entry in _iter_legacy_switch_configs(config):
-        normalized_entry = normalize_legacy_config(raw_entry)
+        normalized_entry = normalize_connection_config(raw_entry)
         if normalized_entry is None:
             _LOGGER.warning(
-                "Skipping invalid YAML config for %s; expected host/interface/ssh key path",
+                "Skipping invalid YAML config for %s; expected host/ssh key path",
                 DOMAIN,
             )
             continue
 
+        normalized_host = normalized_entry[CONF_HOST].lower()
+        if normalized_host in seen_hosts:
+            continue
+
+        seen_hosts.add(normalized_host)
         _LOGGER.warning(
-            "YAML config for %s is deprecated; importing this device into UI config entries",
+            "YAML config for %s is deprecated; importing this switch into UI config entries",
             DOMAIN,
         )
         hass.async_create_task(
@@ -66,7 +72,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up hass_juniper from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
-    normalized_data = normalize_legacy_config(entry.data)
+    normalized_data = normalize_connection_config(entry.data)
     if normalized_data is None:
         _LOGGER.error("Invalid config entry data for %s entry %s", DOMAIN, entry.entry_id)
         return False
@@ -75,21 +81,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         host=normalized_data[CONF_HOST],
         username=normalized_data[CONF_USERNAME],
         ssh_key_path=normalized_data[CONF_SSH_KEY_PATH],
-        interface=normalized_data[CONF_INTERFACE],
     )
 
+    connected = False
     try:
         await client.connect(hass)
+        connected = True
+        interfaces = await client.list_interfaces(hass)
     except Exception as err:  # pylint: disable=broad-except
+        if connected:
+            await client.disconnect(hass)
         raise ConfigEntryNotReady(
             f"Could not connect to {normalized_data[CONF_HOST]}"
         ) from err
 
+    if not interfaces:
+        _LOGGER.warning("No interfaces discovered on %s", normalized_data[CONF_HOST])
+
     hass.data[DOMAIN][entry.entry_id] = client
 
-    new_unique_id = entry_unique_id(
-        normalized_data[CONF_HOST], normalized_data[CONF_INTERFACE]
-    )
+    new_unique_id = entry_unique_id(normalized_data[CONF_HOST])
     if dict(entry.data) != normalized_data or entry.unique_id != new_unique_id:
         hass.config_entries.async_update_entry(
             entry,

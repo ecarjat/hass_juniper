@@ -6,9 +6,9 @@
   "dependencies": [],
   "documentation": "https://github.com/ecarjat/hass_juniper",
   "issue_tracker": "https://github.com/ecarjat/hass_juniper/issues",
-  "integration_type": "device",
+  "integration_type": "hub",
   "iot_class": "local_polling",
   "loggers": ["jnpr.junos"],
   "requirements": ["junos-eznc==2.7.3"],
-  "version": "0.1.1"
+  "version": "0.2.0"
 }

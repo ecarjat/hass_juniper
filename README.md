@@ -9,19 +9,32 @@ Home Assistant custom integration to control Juniper interface admin state as sw
 3. Restart Home Assistant.
 4. Add **hass_juniper** from **Settings > Devices & Services > Add Integration**.
 
+## How It Works
+
+One config entry represents one Juniper switch device and automatically discovers interfaces.
+Each discovered interface is exposed as a separate switch entity.
+
+## SSH Key Input
+
+In the UI config flow you can either:
+
+- Provide `ssh_key_path` directly, or
+- Upload the SSH private key file.
+
+Uploaded keys are persisted under `.storage/hass_juniper` with restrictive file permissions.
+
 ## YAML Migration
 
 Legacy YAML entries under `switch:` with `platform: hass_juniper` are automatically imported into UI config entries.
 
 Legacy keys are migrated as:
 
-- `port` -> `interface`
 - `file_path` -> `ssh_key_path`
+- `port` is ignored (interfaces are now auto-discovered)
 
 ## Configuration fields
 
 - `name`
 - `host`
 - `username`
-- `interface`
-- `ssh_key_path`
+- `ssh_key_path` (or uploaded key)

@@ -2,22 +2,23 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configure Juniper interface",
-        "description": "Create a switch entity to control one Juniper interface.",
+        "title": "Configure Juniper switch",
+        "description": "Connect to a Juniper switch and automatically discover port entities.",
         "data": {
           "name": "Name",
           "host": "Host",
           "username": "Username",
-          "interface": "Interface",
-          "ssh_key_path": "SSH private key path"
+          "ssh_key_path": "SSH private key path (optional if uploading)",
+          "uploaded_key_file": "Upload SSH private key file"
         }
       }
     },
     "error": {
-      "invalid_config": "The configuration is incomplete or invalid."
+      "invalid_config": "The configuration is incomplete or invalid.",
+      "key_upload_failed": "The uploaded SSH key file could not be processed."
     },
     "abort": {
-      "already_configured": "This host/interface is already configured.",
+      "already_configured": "This host is already configured.",
       "invalid_import_config": "The imported YAML entry is invalid."
     }
   }

@@ -14,13 +14,12 @@ else:
 
 
 class JunosPortClient:
-    """Wrap Junos operations for a single interface."""
+    """Wrap Junos operations for a switch with multiple interfaces."""
 
-    def __init__(self, host: str, username: str, ssh_key_path: str, interface: str) -> None:
+    def __init__(self, host: str, username: str, ssh_key_path: str) -> None:
         self.host = host
         self.username = username
         self.ssh_key_path = ssh_key_path
-        self.interface = interface
         self._device: Device | None = None
         self._operation_lock = asyncio.Lock()
 
@@ -32,15 +31,20 @@ class JunosPortClient:
         """Close the network session."""
         await hass.async_add_executor_job(self._disconnect_sync)
 
-    async def set_disabled(self, hass: HomeAssistant, disabled: bool) -> None:
+    async def list_interfaces(self, hass: HomeAssistant) -> list[str]:
+        """Return available interfaces on the switch."""
+        async with self._operation_lock:
+            return await hass.async_add_executor_job(self._list_interfaces_sync)
+
+    async def read_disabled_states(self, hass: HomeAssistant) -> dict[str, bool]:
+        """Read disabled state for all discovered interfaces."""
+        async with self._operation_lock:
+            return await hass.async_add_executor_job(self._read_disabled_states_sync)
+
+    async def set_disabled(self, hass: HomeAssistant, interface: str, disabled: bool) -> None:
         """Set interface disabled state."""
         async with self._operation_lock:
-            await hass.async_add_executor_job(self._set_disabled_sync, disabled)
-
-    async def read_disabled_state(self, hass: HomeAssistant) -> bool:
-        """Read interface disabled state from device config."""
-        async with self._operation_lock:
-            return await hass.async_add_executor_job(self._read_disabled_state_sync)
+            await hass.async_add_executor_job(self._set_disabled_sync, interface, disabled)
 
     def _connect_sync(self) -> None:
         if self._device is not None:
@@ -64,30 +68,75 @@ class JunosPortClient:
         self._device.close()
         self._device = None
 
-    def _set_disabled_sync(self, disabled: bool) -> None:
+    def _normalize_interface_name(self, token: str) -> str | None:
+        token = token.strip().rstrip(":")
+        if not token or token in {"Interface", "Admin", "Link", "Proto"}:
+            return None
+
+        if token.startswith(("{", "->", "(")):
+            return None
+
+        base_name = token.split(".", 1)[0]
+        if "/" in base_name:
+            return base_name
+
+        if base_name.startswith(
+            ("ae", "irb", "vlan", "reth", "lo", "em", "fxp", "st0", "gr-", "lt-")
+        ):
+            return base_name
+
+        return None
+
+    def _list_interfaces_sync(self) -> list[str]:
+        if self._device is None:
+            raise RuntimeError("Junos device connection is not initialized")
+
+        output = self._device.cli("show interfaces terse | no-more", warning=False)
+        interfaces: set[str] = set()
+
+        for line in output.splitlines():
+            if not line.strip():
+                continue
+
+            token = line.split(maxsplit=1)[0]
+            interface = self._normalize_interface_name(token)
+            if interface is not None:
+                interfaces.add(interface)
+
+        return sorted(interfaces)
+
+    def _read_disabled_states_sync(self) -> dict[str, bool]:
+        if self._device is None:
+            raise RuntimeError("Junos device connection is not initialized")
+
+        interfaces = set(self._list_interfaces_sync())
+
+        disabled_output = self._device.cli(
+            'show configuration interfaces | display set | match " disable$"',
+            warning=False,
+        )
+
+        disabled_interfaces: set[str] = set()
+        for line in disabled_output.splitlines():
+            tokens = line.split()
+            if len(tokens) >= 4 and tokens[0] == "set" and tokens[1] == "interfaces":
+                disabled_interfaces.add(tokens[2])
+
+        interfaces.update(disabled_interfaces)
+        return {interface: interface in disabled_interfaces for interface in sorted(interfaces)}
+
+    def _set_disabled_sync(self, interface: str, disabled: bool) -> None:
         if self._device is None:
             raise RuntimeError("Junos device connection is not initialized")
 
         from jnpr.junos.utils.config import Config
 
         command = (
-            f"set interfaces {self.interface} disable"
+            f"set interfaces {interface} disable"
             if disabled
-            else f"delete interfaces {self.interface} disable"
+            else f"delete interfaces {interface} disable"
         )
 
         config = Config(self._device)
         config.load(command, format="set")
         config.commit()
-
-    def _read_disabled_state_sync(self) -> bool:
-        if self._device is None:
-            raise RuntimeError("Junos device connection is not initialized")
-
-        output = self._device.cli(
-            f"show configuration interfaces {self.interface} | display set | match disable",
-            warning=False,
-        )
-
-        expected_line = f"set interfaces {self.interface} disable"
-        return any(line.strip() == expected_line for line in output.splitlines())
