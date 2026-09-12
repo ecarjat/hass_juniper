@@ -75,6 +75,13 @@ class JunosPortClient:
         async with self._operation_lock:
             await hass.async_add_executor_job(self._set_disabled_sync, interface, disabled)
 
+    async def set_description(self, hass: HomeAssistant, interface: str, description: str) -> None:
+        """Set or clear the interface description (label)."""
+        async with self._operation_lock:
+            await hass.async_add_executor_job(
+                self._set_description_sync, interface, description
+            )
+
     def _connect_sync(self) -> None:
         if self._device is not None:
             return
@@ -334,6 +341,30 @@ class JunosPortClient:
             if disabled
             else f"delete interfaces {interface} disable"
         )
+
+        config = Config(self._device)
+        config.load(command, format="set")
+        config.commit()
+
+    def _build_description_command(self, interface: str, description: str) -> str:
+        """Build the Junos set-format command to update or clear a description."""
+        stripped = description.strip()
+        if not stripped:
+            return f"delete interfaces {interface} description"
+
+        if "\n" in stripped or "\r" in stripped:
+            raise ValueError("Interface description cannot contain newlines")
+
+        escaped = stripped.replace("\\", "\\\\").replace('"', '\\"')
+        return f'set interfaces {interface} description "{escaped}"'
+
+    def _set_description_sync(self, interface: str, description: str) -> None:
+        if self._device is None:
+            raise RuntimeError("Junos device connection is not initialized")
+
+        from jnpr.junos.utils.config import Config
+
+        command = self._build_description_command(interface, description)
 
         config = Config(self._device)
         config.load(command, format="set")

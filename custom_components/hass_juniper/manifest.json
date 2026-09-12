@@ -10,5 +10,5 @@
   "iot_class": "local_polling",
   "loggers": ["jnpr.junos"],
   "requirements": ["junos-eznc==2.8.2"],
-  "version": "0.3.0"
+  "version": "0.4.0"
 }

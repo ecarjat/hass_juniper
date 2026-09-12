@@ -117,6 +117,46 @@ def test_connect_sync_translates_auth_error() -> None:
     assert client._device is None
 
 
+def test_build_description_command_sets_quoted_description() -> None:
+    """A plain description should produce a quoted set command."""
+    client = JunosPortClient("switch.home", "admin", "/config/.ssh/id_rsa")
+
+    assert (
+        client._build_description_command("ge-0/0/1", "Kids Room")
+        == 'set interfaces ge-0/0/1 description "Kids Room"'
+    )
+
+
+def test_build_description_command_deletes_on_blank_description() -> None:
+    """An empty or whitespace-only description should delete the statement."""
+    client = JunosPortClient("switch.home", "admin", "/config/.ssh/id_rsa")
+
+    assert (
+        client._build_description_command("ge-0/0/1", "   ")
+        == "delete interfaces ge-0/0/1 description"
+    )
+
+
+def test_build_description_command_escapes_quotes_and_backslashes() -> None:
+    """Embedded quotes and backslashes should be escaped for the set-line syntax."""
+    client = JunosPortClient("switch.home", "admin", "/config/.ssh/id_rsa")
+
+    assert (
+        client._build_description_command("ge-0/0/1", 'Uplink "core" \\ router')
+        == 'set interfaces ge-0/0/1 description "Uplink \\"core\\" \\\\ router"'
+    )
+
+
+def test_build_description_command_rejects_embedded_newline() -> None:
+    """A newline could inject an additional Junos set statement and must be rejected."""
+    client = JunosPortClient("switch.home", "admin", "/config/.ssh/id_rsa")
+
+    with pytest.raises(ValueError):
+        client._build_description_command(
+            "ge-0/0/1", "Kids Room\nset system services telnet"
+        )
+
+
 def test_parse_interface_speeds_from_media_output() -> None:
     """Speed should be parsed from media details output."""
     client = JunosPortClient("switch.home", "admin", "/config/.ssh/id_rsa")

@@ -12,7 +12,12 @@ Home Assistant custom integration to control Juniper interface admin state as sw
 ## How It Works
 
 One config entry represents one Juniper switch device and automatically discovers interfaces.
-Each discovered interface is exposed as a separate switch entity.
+Each discovered interface is exposed as a switch entity (admin state), a link binary sensor,
+a speed sensor, and a text entity for the interface description.
+
+Editing the description text entity in Home Assistant pushes the new value to the switch as
+`set interfaces <if> description "..."` (or removes the statement if cleared); descriptions
+changed directly on the switch are reflected back in Home Assistant on the next poll.
 
 ## SSH Key Input
 

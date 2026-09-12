@@ -7,7 +7,7 @@ from datetime import timedelta
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_USERNAME
 
 DOMAIN = "hass_juniper"
-PLATFORMS: list[str] = ["switch", "binary_sensor", "sensor"]
+PLATFORMS: list[str] = ["switch", "binary_sensor", "sensor", "text"]
 
 CONF_INTERFACE = "interface"
 CONF_SSH_KEY_PATH = "ssh_key_path"
