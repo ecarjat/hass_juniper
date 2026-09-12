@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import socket
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from custom_components.hass_juniper.junos_client import JunosPortClient
+import pytest
+
+from custom_components.hass_juniper.junos_client import (
+    JunosAuthenticationError,
+    JunosPortClient,
+)
 
 
 def test_resolve_transport_host_prefers_ipv4() -> None:
@@ -95,6 +100,21 @@ def test_parse_interface_statuses_from_terse_output() -> None:
         "ge-0/0/0": ("up", "up"),
         "xe-0/0/1": ("up", "down"),
     }
+
+
+def test_connect_sync_translates_auth_error() -> None:
+    """Auth failures from the Junos SDK should raise JunosAuthenticationError."""
+    from jnpr.junos.exception import ConnectAuthError
+
+    client = JunosPortClient("switch.home", "admin", "/config/.ssh/id_rsa")
+
+    with patch("jnpr.junos.Device") as mock_device_cls:
+        mock_device_cls.return_value.open.side_effect = ConnectAuthError(MagicMock())
+
+        with pytest.raises(JunosAuthenticationError):
+            client._connect_sync()
+
+    assert client._device is None
 
 
 def test_parse_interface_speeds_from_media_output() -> None:

@@ -17,6 +17,10 @@ else:
     Device = Any
 
 
+class JunosAuthenticationError(Exception):
+    """Raised when the Junos device rejects the configured credentials."""
+
+
 @dataclass(frozen=True, slots=True)
 class JunosInterfaceState:
     """Current admin state metadata for a Junos interface."""
@@ -76,6 +80,7 @@ class JunosPortClient:
             return
 
         from jnpr.junos import Device as JunosDevice
+        from jnpr.junos.exception import ConnectAuthError
 
         # Docker DNS setups may return NXDOMAIN for AAAA and break AF_UNSPEC
         # lookups used by ncclient. Resolve IPv4 first to avoid false negatives.
@@ -87,7 +92,10 @@ class JunosPortClient:
             ssh_private_key_file=self.ssh_key_path,
             gather_facts=False,
         )
-        device.open()
+        try:
+            device.open()
+        except ConnectAuthError as err:
+            raise JunosAuthenticationError(str(err)) from err
         self._device = device
 
     def _resolve_transport_host(self) -> str:

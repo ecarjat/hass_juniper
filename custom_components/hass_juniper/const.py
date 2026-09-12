@@ -12,8 +12,6 @@ PLATFORMS: list[str] = ["switch", "binary_sensor", "sensor"]
 CONF_INTERFACE = "interface"
 CONF_SSH_KEY_PATH = "ssh_key_path"
 CONF_UPLOADED_KEY_FILE = "uploaded_key_file"
-DATA_CLIENT = "client"
-DATA_COORDINATOR = "coordinator"
 
 LEGACY_CONF_PORT = "port"
 LEGACY_CONF_FILE_PATH = "file_path"

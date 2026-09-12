@@ -7,22 +7,17 @@ from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
-from homeassistant.config_entries import ConfigEntry, SOURCE_IMPORT
+from homeassistant.config_entries import SOURCE_IMPORT
 from homeassistant.const import CONF_HOST, CONF_PLATFORM, CONF_USERNAME
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.typing import ConfigType
 
-from .const import (
-    CONF_SSH_KEY_PATH,
-    DATA_CLIENT,
-    DATA_COORDINATOR,
-    DOMAIN,
-    PLATFORMS,
-)
+from .const import CONF_SSH_KEY_PATH, DOMAIN, PLATFORMS
 from .coordinator import JuniperPortsCoordinator
-from .junos_client import JunosPortClient
+from .junos_client import JunosAuthenticationError, JunosPortClient
 from .migration import entry_unique_id, normalize_connection_config
+from .models import JuniperConfigEntry, JuniperRuntimeData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,8 +38,6 @@ def _iter_legacy_switch_configs(config: ConfigType) -> list[Mapping[str, Any]]:
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up hass_juniper from YAML for migration only."""
-    hass.data.setdefault(DOMAIN, {})
-
     seen_hosts: set[str] = set()
     for raw_entry in _iter_legacy_switch_configs(config):
         normalized_entry = normalize_connection_config(raw_entry)
@@ -75,10 +68,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: JuniperConfigEntry) -> bool:
     """Set up hass_juniper from a config entry."""
-    hass.data.setdefault(DOMAIN, {})
-
     normalized_data = normalize_connection_config(entry.data)
     if normalized_data is None:
         _LOGGER.error("Invalid config entry data for %s entry %s", DOMAIN, entry.entry_id)
@@ -89,13 +80,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         username=normalized_data[CONF_USERNAME],
         ssh_key_path=normalized_data[CONF_SSH_KEY_PATH],
     )
-    coordinator = JuniperPortsCoordinator(hass, client)
+    coordinator = JuniperPortsCoordinator(hass, entry, client)
 
     connected = False
     try:
         await client.connect(hass)
         connected = True
         await coordinator.async_config_entry_first_refresh()
+    except JunosAuthenticationError as err:
+        if connected:
+            await client.disconnect(hass)
+        raise ConfigEntryAuthFailed(
+            f"Authentication failed connecting to {normalized_data[CONF_HOST]}"
+        ) from err
+    except ConfigEntryAuthFailed:
+        if connected:
+            await client.disconnect(hass)
+        raise
     except Exception as err:  # pylint: disable=broad-except
         if connected:
             await client.disconnect(hass)
@@ -106,10 +107,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not coordinator.data:
         _LOGGER.warning("No interfaces discovered on %s", normalized_data[CONF_HOST])
 
-    hass.data[DOMAIN][entry.entry_id] = {
-        DATA_CLIENT: client,
-        DATA_COORDINATOR: coordinator,
-    }
+    entry.runtime_data = JuniperRuntimeData(client=client, coordinator=coordinator)
 
     new_unique_id = entry_unique_id(normalized_data[CONF_HOST])
     if dict(entry.data) != normalized_data or entry.unique_id != new_unique_id:
@@ -122,30 +120,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except Exception:  # pylint: disable=broad-except
-        hass.data[DOMAIN].pop(entry.entry_id, None)
         await client.disconnect(hass)
         raise
 
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: JuniperConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if not unload_ok:
         return False
 
-    runtime = hass.data[DOMAIN].pop(entry.entry_id, None)
-    client: JunosPortClient | None = None
-    if isinstance(runtime, dict):
-        client = runtime.get(DATA_CLIENT)
-    else:
-        client = runtime
-
-    if client is not None:
-        await client.disconnect(hass)
-
-    if not hass.data[DOMAIN]:
-        hass.data.pop(DOMAIN)
+    await entry.runtime_data.client.disconnect(hass)
 
     return True

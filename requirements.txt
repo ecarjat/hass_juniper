@@ -1,2 +1,2 @@
 # Runtime dependencies for hass_juniper
-junos-eznc==2.7.3
+junos-eznc==2.8.2

@@ -11,6 +11,26 @@
           "ssh_key_path": "SSH private key path (optional if uploading)",
           "uploaded_key_file": "Upload SSH private key file"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Juniper switch",
+        "description": "The switch rejected the stored credentials. Provide a new username and/or SSH key.",
+        "data": {
+          "username": "Username",
+          "ssh_key_path": "SSH private key path (optional if uploading)",
+          "uploaded_key_file": "Upload SSH private key file"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Juniper switch",
+        "description": "Update the connection details for this Juniper switch.",
+        "data": {
+          "name": "Name",
+          "host": "Host",
+          "username": "Username",
+          "ssh_key_path": "SSH private key path (optional if uploading)",
+          "uploaded_key_file": "Upload SSH private key file"
+        }
       }
     },
     "error": {
@@ -19,7 +39,8 @@
     },
     "abort": {
       "already_configured": "This host is already configured.",
-      "invalid_import_config": "The imported YAML entry is invalid."
+      "invalid_import_config": "The imported YAML entry is invalid.",
+      "unique_id_mismatch": "This host resolves to a different switch than the one being reconfigured."
     }
   }
 }

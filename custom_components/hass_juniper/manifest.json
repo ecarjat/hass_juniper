@@ -9,6 +9,6 @@
   "integration_type": "hub",
   "iot_class": "local_polling",
   "loggers": ["jnpr.junos"],
-  "requirements": ["junos-eznc==2.7.3"],
-  "version": "0.2.0"
+  "requirements": ["junos-eznc==2.8.2"],
+  "version": "0.3.0"
 }

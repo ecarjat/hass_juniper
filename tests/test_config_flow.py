@@ -111,6 +111,102 @@ async def test_import_maps_legacy_keys() -> None:
 
 
 @pytest.mark.asyncio
+async def test_reauth_confirm_updates_entry_with_new_credentials() -> None:
+    """Reauth confirm should merge new credentials into the existing entry data."""
+    flow = HassJuniperConfigFlow()
+    flow.hass = SimpleNamespace()
+    reauth_entry = SimpleNamespace(
+        data={
+            CONF_NAME: "Switch A",
+            CONF_HOST: "10.0.0.2",
+            CONF_USERNAME: "admin",
+            CONF_SSH_KEY_PATH: "/config/.ssh/old_key",
+        }
+    )
+    flow._get_reauth_entry = MagicMock(return_value=reauth_entry)
+    flow.async_update_reload_and_abort = MagicMock(return_value={"type": "abort"})
+
+    result = await flow.async_step_reauth_confirm(
+        {
+            CONF_USERNAME: "root",
+            CONF_SSH_KEY_PATH: "/config/.ssh/new_key",
+        }
+    )
+
+    assert result["type"] == "abort"
+    flow.async_update_reload_and_abort.assert_called_once_with(
+        reauth_entry,
+        data={
+            CONF_NAME: "Switch A",
+            CONF_HOST: "10.0.0.2",
+            CONF_USERNAME: "root",
+            CONF_SSH_KEY_PATH: "/config/.ssh/new_key",
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_reauth_step_shows_confirm_form() -> None:
+    """The reauth entry step should delegate straight to reauth_confirm."""
+    flow = HassJuniperConfigFlow()
+    flow.hass = SimpleNamespace()
+    reauth_entry = SimpleNamespace(
+        data={
+            CONF_NAME: "Switch A",
+            CONF_HOST: "10.0.0.2",
+            CONF_USERNAME: "admin",
+            CONF_SSH_KEY_PATH: "/config/.ssh/old_key",
+        }
+    )
+    flow._get_reauth_entry = MagicMock(return_value=reauth_entry)
+
+    result = await flow.async_step_reauth({})
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "reauth_confirm"
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_updates_entry_with_new_details() -> None:
+    """Reconfigure should validate the new unique id and update the entry."""
+    flow = HassJuniperConfigFlow()
+    flow.hass = SimpleNamespace()
+    reconfigure_entry = SimpleNamespace(
+        data={
+            CONF_NAME: "Switch A",
+            CONF_HOST: "10.0.0.2",
+            CONF_USERNAME: "admin",
+            CONF_SSH_KEY_PATH: "/config/.ssh/old_key",
+        }
+    )
+    flow._get_reconfigure_entry = MagicMock(return_value=reconfigure_entry)
+    flow.async_set_unique_id = AsyncMock()
+    flow._abort_if_unique_id_mismatch = MagicMock()
+    flow.async_update_reload_and_abort = MagicMock(return_value={"type": "abort"})
+
+    result = await flow.async_step_reconfigure(
+        {
+            CONF_NAME: "Switch A",
+            CONF_HOST: "10.0.0.2",
+            CONF_USERNAME: "admin",
+            CONF_SSH_KEY_PATH: "/config/.ssh/new_key",
+        }
+    )
+
+    assert result["type"] == "abort"
+    flow._abort_if_unique_id_mismatch.assert_called_once()
+    flow.async_update_reload_and_abort.assert_called_once_with(
+        reconfigure_entry,
+        data={
+            CONF_NAME: "Switch A",
+            CONF_HOST: "10.0.0.2",
+            CONF_USERNAME: "admin",
+            CONF_SSH_KEY_PATH: "/config/.ssh/new_key",
+        },
+    )
+
+
+@pytest.mark.asyncio
 async def test_import_deduplicates_by_host() -> None:
     """Import dedupe should use host-level unique id and update payload."""
     flow = HassJuniperConfigFlow()

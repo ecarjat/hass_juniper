@@ -18,10 +18,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DATA_CLIENT, DATA_COORDINATOR, DOMAIN
+from .const import DOMAIN
 from .coordinator import JuniperPortsCoordinator
 from .junos_client import JunosInterfaceState, JunosPortClient
 from .migration import entity_unique_id, entry_unique_id, normalize_connection_config
+from .models import JuniperConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -178,13 +179,12 @@ class JuniperPortSwitch(CoordinatorEntity[JuniperPortsCoordinator], SwitchEntity
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: JuniperConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up hass_juniper switch entities from a config entry."""
-    runtime_data: dict[str, Any] = hass.data[DOMAIN][entry.entry_id]
-    client: JunosPortClient = runtime_data[DATA_CLIENT]
-    coordinator: JuniperPortsCoordinator = runtime_data[DATA_COORDINATOR]
+    client = entry.runtime_data.client
+    coordinator = entry.runtime_data.coordinator
 
     known_interfaces: set[str] = set()
 

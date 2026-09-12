@@ -9,10 +9,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PLATFORM, CONF_USERNAME
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
 from custom_components.hass_juniper import async_setup, async_setup_entry, async_unload_entry
-from custom_components.hass_juniper.const import CONF_SSH_KEY_PATH, DATA_CLIENT, DOMAIN
+from custom_components.hass_juniper.const import CONF_SSH_KEY_PATH, DOMAIN
+from custom_components.hass_juniper.models import JuniperRuntimeData
 
 
 class FakeHass:
@@ -41,6 +42,12 @@ class FakeEntry:
         self.data = data
         self.entry_id = entry_id
         self.unique_id = unique_id
+        self.runtime_data: JuniperRuntimeData | None = None
+        self._on_unload_callbacks: list = []
+
+    def async_on_unload(self, func) -> None:
+        """Record a callback to run on unload, mirroring ConfigEntry."""
+        self._on_unload_callbacks.append(func)
 
 
 @pytest.mark.asyncio
@@ -97,16 +104,38 @@ async def test_async_setup_entry_raises_not_ready_on_connect_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_raises_auth_failed_on_bad_credentials() -> None:
+    """Authentication errors should raise ConfigEntryAuthFailed to trigger reauth."""
+    from custom_components.hass_juniper.junos_client import JunosAuthenticationError
+
+    hass = FakeHass()
+    entry = FakeEntry(
+        {
+            CONF_NAME: "Switch",
+            CONF_HOST: "10.0.0.10",
+            CONF_USERNAME: "admin",
+            CONF_SSH_KEY_PATH: "/config/.ssh/id_rsa",
+        }
+    )
+
+    with patch(
+        "custom_components.hass_juniper.JunosPortClient.connect",
+        AsyncMock(side_effect=JunosAuthenticationError("bad credentials")),
+    ):
+        with pytest.raises(ConfigEntryAuthFailed):
+            await async_setup_entry(hass, entry)
+
+
+@pytest.mark.asyncio
 async def test_async_unload_entry_disconnects_client() -> None:
     """Unload should unload platforms and disconnect client."""
     hass = FakeHass()
     entry = FakeEntry({}, entry_id="entry_2")
 
     client = AsyncMock()
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {DATA_CLIENT: client}
+    entry.runtime_data = JuniperRuntimeData(client=client, coordinator=MagicMock())
 
     assert await async_unload_entry(hass, entry)
 
     hass.config_entries.async_unload_platforms.assert_awaited_once()
     client.disconnect.assert_awaited_once_with(hass)
-    assert DOMAIN not in hass.data

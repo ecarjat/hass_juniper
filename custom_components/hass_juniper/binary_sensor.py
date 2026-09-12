@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
@@ -15,9 +13,10 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DATA_COORDINATOR, DOMAIN
+from .const import DOMAIN
 from .coordinator import JuniperPortsCoordinator
 from .migration import entity_unique_id, entry_unique_id
+from .models import JuniperConfigEntry
 
 
 class JuniperPortLinkBinarySensor(
@@ -89,12 +88,11 @@ class JuniperPortLinkBinarySensor(
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: JuniperConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up hass_juniper link binary sensors from a config entry."""
-    runtime_data: dict[str, Any] = hass.data[DOMAIN][entry.entry_id]
-    coordinator: JuniperPortsCoordinator = runtime_data[DATA_COORDINATOR]
+    coordinator = entry.runtime_data.coordinator
 
     known_interfaces: set[str] = set()
 
